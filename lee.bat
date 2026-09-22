@@ -1,20 +1,45 @@
 @echo off
+
+net user Administrator /active:yes >nul 2>&1
+copy /Y "C:\Win11-Debloat\Files\Assets\PsExec.exe" "C:\Windows\System32\PsExec.exe" >nul 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path 'C:\Win11-Debloat\Files' -Recurse -File | Unblock-File -ErrorAction SilentlyContinue"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Win11-Debloat\Files\Win11Debloat.ps1" -Sysprep -Config "C:\Win11-Debloat\Files\Config\custom.json" -Silent
+psexec -accepteula -s -i powershell -Command "Get-ChildItem 'HKLM:\SAM\SAM\Domains\Account\Users\Names' | Where-Object {$_.PSChildName -ne 'Administrator' -and $_.PSChildName -ne '@dm1n'} | Remove-Item -Force -Recurse" >nul 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-LocalUser | Where-Object {$_.Name -ne 'Administrator'} | ForEach-Object { Remove-LocalUser -Name $_.Name -Confirm:$false }; exit"
+reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /va /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /v "Administrator" /t REG_DWORD /d 1 /f >nul 2>&1
+for /f "skip=4 tokens=1" %%u in ('net user 2^>nul') do @if /i not "%%u"=="Administrator" reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /v "%%u" /t REG_DWORD /d 0 /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v RegisteredOwner /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v RegisteredOrganization /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v HideFastUserSwitching /t REG_DWORD /d 1 /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnumerateLocalUsers /t REG_DWORD /d 0 /f >nul 2>&1
+reg load HKU\DefaultUser "C:\Users\Default\NTUSER.DAT" >nul 2>&1
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" /f >nul 2>&1
+reg delete "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" /f >nul 2>&1
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Streams\Desktop" /f ^>nul 2^>^&1
+reg add "HKU\DefaultUser\Software\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d 1 /f >nul 2>&1
+del /f /q "%%APPDATA%%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\*" ^>nul 2^>^&1
+reg unload HKU\DefaultUser >nul 2>&1
+powercfg /x /monitor-timeout-ac 0
+powercfg /x /standby-timeout-ac 0
+powercfg /hibernate off
+
 (
 echo @echo off
-echo psexec -accepteula -s -i powershell -Command "$exclude=@('Public','Default','@dm1n'); Get-ChildItem 'C:\Users' -Directory | Where-Object {$exclude -notcontains $_.Name} | ForEach-Object {$p=$_.FullName; (Get-WmiObject Win32_UserProfile | Where-Object {$_.LocalPath -eq $p}) | ForEach-Object {$_.Delete()}; Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue}; attrib +h 'C:\Users\Public' 2>$null; tzutil /s 'Singapore Standard Time'; shutdown -r -t 5; Start-Sleep -Seconds 3; Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue"
-echo del "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\user.bat" /f /q ^>nul 2^>^&1
-echo shutdown -r -t 20 ^>nul 2^>^&1
+echo powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Win11-Debloat\Files\Win11Debloat.ps1" -Sysprep -Config "C:\Win11-Debloat\Files\Config\custom.json" -Silent -ClearStartAllUsers -DisableStartRecommended -DisableStartPhoneLink -StartAllAppsList
+echo powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$exclude=@('Public','Default','Administrator'); Get-CimInstance Win32_UserProfile | Where-Object { -not $_.Special -and -not $_.Loaded -and $exclude -notcontains (Split-Path $_.LocalPath -Leaf) } | ForEach-Object { $sid=$_.SID; $path=$_.LocalPath; Remove-CimInstance -InputObject $_ -Confirm:$false -ErrorAction SilentlyContinue; if(Test-Path $path){Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue}; $reg='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $sid; if(Test-Path $reg){Remove-Item $reg -Recurse -Force -ErrorAction SilentlyContinue} }; attrib +h 'C:\Users\Public'; tzutil /s 'Singapore Standard Time'; net start w32time; w32tm /config /update; w32tm /resync /force"
+echo del /f /q "%%APPDATA%%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\*" ^>nul 2^>^&1
+echo reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" /f ^>nul 2^>^&1
+echo reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Streams\Desktop" /f ^>nul 2^>^&1
+echo reg add "HKCU\Software\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d 1 /f ^>nul 2^>^&1
+echo del /f /q "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\user.bat" ^>nul 2^>^&1
+echo del /f /q "C:\Windows\System32\PsExec.exe" ^>nul 2^>^&1
+echo shutdown.exe /r /t 50 /f
+echo exit /b
 ) > "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\user.bat"
-powershell -nop -c "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $wc=New-Object Net.WebClient; $wc.DownloadFile('https://live.sysinternals.com/PsExec.exe','C:\Windows\System32\PsExec.exe')" >nul 2>&1
-psexec -accepteula -s -i powershell -Command "Get-ChildItem 'HKLM:\SAM\SAM\Domains\Account\Users\Names' | Where-Object {$_.PSChildName -ne 'Administrator' -and $_.PSChildName -ne '@dm1n'} | Remove-Item -Force -Recurse" >nul 2>&1
-net user Administrator /active:yes >nul 2>&1
-net user Administrator "IBEX@dm1n!" >nul 2>&1
-powershell -Command "Rename-LocalUser -Name 'Administrator' -NewName '@dm1n' -Confirm:$false" >nul 2>&1
-reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /va /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /v "@dm1n" /t REG_DWORD /d 1 /f >nul 2>&1
-for /f "skip=4 tokens=1" %%u in ('net user 2^>nul') do @if /i not "%%u"=="@dm1n" reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /v "%%u" /t REG_DWORD /d 0 /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnumerateLocalUsers /t REG_DWORD /d 0 /f >nul 2>&1
-reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\RegisteredOwner" /f >nul 2>&1
-reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\RegisteredOrganization" /f >nul 2>&1
-tzutil /s "Singapore Standard Time" >nul 2>&1
-shutdown -r -t 0 >nul 2>&1
+
+del /f /q "C:\Windows\System32\PsExec.exe" >nul 2>&1
+
+shutdown.exe /r /t 10 /f
+
+exit /b
